@@ -12,11 +12,26 @@ pub fn main() !void {
     const address = try Address.parseIp4("127.0.0.1", 8080);
     try stream_server.listen(address);
 
+    // var frames = std.ArrayList(*Connection).init(allocator);
+
     while(true) {
         const connection = try stream_server.accept();
-        try handler(allocator, connection.stream);
+
+        // sync call
+        // try handler(allocator, connection.stream);
+
+        // async call
+        var conn = try allocator.create(Connection);
+        conn.* = .{
+            .frame = async handler(allocator, connection.stream), 
+        };
+        try frames.append(conn);
     }
 }
+
+const Connection = struct {
+    frame: @Frame(handler),
+};
 
 const ParsingError = error {
     MethodNotValid,
@@ -153,7 +168,11 @@ fn handler(allocator: std.mem.Allocator, stream: net.Stream) !void {
     defer stream.close();
 
     var http_context = try HTTPContext.init(allocator,stream);
-    // _ = http_context;
+    if (std.mem.eql(u8, http_context.uri, "/15")) {
+        std.time.sleep(std.time.ns_per_s * 15);
+    } else if (std.mem.eql(u8, http_context.uri, "/2")) {
+        std.time.sleep(std.time.ns_per_s * 2);
+    }
     http_context.debugPrintRequest();
 
     try http_context.respond(Status.OK, null, "Hello From ZIG");

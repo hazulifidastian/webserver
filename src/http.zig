@@ -144,13 +144,14 @@ pub const Server = struct {
     frames: std.ArrayList(*Connection),
 
     const Connection = struct {
-        frame: @Frame(handler),
+        frame: @Frame(run_handler),
     };
 
 
     pub const Config = struct {
         address: []const u8 = "127.0.0.1",
         port: u16 = 8080,
+        handlers: []Handler = undefined,
     };
 
     pub fn init(allocator: Allocator, config: Config) !Server {
@@ -167,13 +168,19 @@ pub const Server = struct {
         self.stream_server.deinit();
     }
 
-    fn handler(allocator: std.mem.Allocator, stream: net.Stream) !void {
+    fn run_handler(self: *Server, stream: net.Stream) !void {
         defer stream.close();
 
-        var context = try Context.init(allocator,stream);
+        var context = try Context.init(self.allocator,stream);
+
         context.debugPrintRequest();
 
-        try context.respond(Status.OK, null, "Hello From ZIG");
+        for (self.config.handlers) |handler| {
+            if (try handler.predicate(context)) {
+                try handler.func(context);
+                break;
+            }
+        }
     }
 
     pub fn listen(self: *Server) !void {
@@ -188,9 +195,14 @@ pub const Server = struct {
             // async call
             var conn = try self.allocator.create(Connection);
             conn.* = .{
-                .frame = async handler(self.allocator, connection.stream), 
+                .frame = async self.run_handler(connection.stream), 
             };
             try self.frames.append(conn);
         }
     }
+};
+
+const Handler = struct{
+    predicate: fn (Context) anyerror!bool,
+    func: fn (Context) anyerror!void,
 };

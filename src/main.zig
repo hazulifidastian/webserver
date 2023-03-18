@@ -1,7 +1,4 @@
 const std = @import("std");
-const net = std.net;
-const StreamServer = net.StreamServer;
-const Address = net.Address;
 const GeneralPurposeAllocator = std.heap.GeneralPurposeAllocator;
 const http = @import("http.zig");
 
@@ -11,10 +8,19 @@ const Server = http.Server;
 
 pub const io_mode = .evented;
 
-pub fn main() !void {
+pub fn main() anyerror!void {
     var gpa = GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    var server = try Server.init(allocator, .{});
+    var server = Server(handler).init(allocator, .{
+        .address = "127.0.0.1",
+        .port = 8080,
+    });
+
     try server.listen();
+}
+
+fn handler(ctx: *Context) anyerror!void {
+    if (std.mem.eql(u8, ctx.uri, "/sleep")) std.time.sleep(std.time.ns_per_s * 5);
+    try ctx.respond(Status.OK, null, "some");
 }
